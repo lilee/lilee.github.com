@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+  <rss version="2.0"
+        xmlns:content="http://purl.org/rss/1.0/modules/content/"
+        xmlns:atom="http://www.w3.org/2005/Atom"
+  >
+  <channel>
+    <title>李锂</title>
+    <link href="/feed/" rel="self" />
+    <link href="http://yihui.name/" />
+    <lastBuildDate>2012-08-27T16:21:00+08:00</lastBuildDate>
+    <webMaster>xie@yihui.name</webMaster>
+    
+    <item>
+      <title>CEscapeString</title>
+      <link href="/2012/08/cescapestring/"/>
+      <pubDate>2012-08-27T00:00:00+08:00</pubDate>
+      <author>李锂</author>
+      <guid>/2012/08/cescapestring</guid>
+      <content:encoded><![CDATA[<p>最近在项目中使用LOG打印调试信息日志时，有些需要打印的数据中含有不可显示的字符，在终端上就显示成了问号或者是乱码。这样非常不利于判断打印的调试信息中的数据是否正常。</p>
+
+<p>但笔者最近在使用protobuf时，发现使用它的Message::DebugString的接口可以把不可显示的字符进行转义输出。protobuf中将这个转义函数叫做CEscapeString，意思是:</p>
+
+<blockquote>
+<p>escaping dangerous characters using C-style escape sequences (将危险的字符进行C风格的转义)</p>
+</blockquote>
+
+<p>首先看看CEscapeString的签名</p>
+<div class='highlight'><pre><code class='cpp'><span class='c1'>// CEscapeString()</span>
+<span class='c1'>//    Copies &#39;src&#39; to &#39;dest&#39;, escaping dangerous characters using</span>
+<span class='c1'>//    C-style escape sequences. This is very useful for preparing query</span>
+<span class='c1'>//    flags. &#39;src&#39; and &#39;dest&#39; should not overlap.</span>
+<span class='c1'>//    Returns the number of bytes written to &#39;dest&#39; (not including the \0)</span>
+<span class='c1'>//    or -1 if there was insufficient space.</span>
+<span class='c1'>//</span>
+<span class='c1'>//    Currently only \n, \r, \t, &quot;, &#39;, \ and !isprint() chars are escaped.</span>
+<span class='kt'>int</span> <span class='n'>CEscapeString</span><span class='p'>(</span><span class='k'>const</span> <span class='kt'>char</span><span class='o'>*</span> <span class='n'>src</span><span class='p'>,</span> <span class='kt'>int</span> <span class='n'>src_len</span><span class='p'>,</span>
+                  <span class='kt'>char</span><span class='o'>*</span> <span class='n'>dest</span><span class='p'>,</span> <span class='kt'>int</span> <span class='n'>dest_len</span><span class='p'>);</span>
+</code></pre>
+</div>
+<p>google代码中的注释非常详细，值得学习。注释中还解释说CEscapeString在preparing query flags时非常有用。也就是说，你通过gflags或者其他方式向命令行传递一些不可显示字符时就需要使用到这种方式。目前仅只对\n,\r,\t, &#8220;, &#8216;, \ 和不可显示字符做转义</p>
+
+<p>概念了解了，实现很简单，所有码农都会写。这里还是贴出google的官方版本实现。可以窥探出CEscapeString实现的更多细节，这里不做过多解释</p>
+<div class='highlight'><pre><code class='cpp'><span class='kt'>int</span> <span class='n'>CEscapeInternal</span><span class='p'>(</span><span class='k'>const</span> <span class='kt'>char</span><span class='o'>*</span> <span class='n'>src</span><span class='p'>,</span> <span class='kt'>int</span> <span class='n'>src_len</span><span class='p'>,</span> <span class='kt'>char</span><span class='o'>*</span> <span class='n'>dest</span><span class='p'>,</span>
+                    <span class='kt'>int</span> <span class='n'>dest_len</span><span class='p'>,</span> <span class='kt'>bool</span> <span class='n'>use_hex</span><span class='p'>,</span> <span class='kt'>bool</span> <span class='n'>utf8_safe</span><span class='p'>)</span> <span class='p'>{</span>
+  <span class='k'>const</span> <span class='kt'>char</span><span class='o'>*</span> <span class='n'>src_end</span> <span class='o'>=</span> <span class='n'>src</span> <span class='o'>+</span> <span class='n'>src_len</span><span class='p'>;</span>
+  <span class='kt'>int</span> <span class='n'>used</span> <span class='o'>=</span> <span class='mi'>0</span><span class='p'>;</span>
+  <span class='kt'>bool</span> <span class='n'>last_hex_escape</span> <span class='o'>=</span> <span class='kc'>false</span><span class='p'>;</span> <span class='c1'>// true if last output char was \xNN</span>
+
+  <span class='k'>for</span> <span class='p'>(;</span> <span class='n'>src</span> <span class='o'>&lt;</span> <span class='n'>src_end</span><span class='p'>;</span> <span class='n'>src</span><span class='o'>++</span><span class='p'>)</span> <span class='p'>{</span>
+    <span class='k'>if</span> <span class='p'>(</span><span class='n'>dest_len</span> <span class='o'>-</span> <span class='n'>used</span> <span class='o'>&lt;</span> <span class='mi'>2</span><span class='p'>)</span>   <span class='c1'>// Need space for two letter escape</span>
+      <span class='k'>return</span> <span class='o'>-</span><span class='mi'>1</span><span class='p'>;</span>
+
+    <span class='kt'>bool</span> <span class='n'>is_hex_escape</span> <span class='o'>=</span> <span class='kc'>false</span><span class='p'>;</span>
+    <span class='k'>switch</span> <span class='p'>(</span><span class='o'>*</span><span class='n'>src</span><span class='p'>)</span> <span class='p'>{</span>
+      <span class='k'>case</span> <span class='sc'>&#39;\n&#39;</span><span class='o'>:</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\\&#39;</span><span class='p'>;</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;n&#39;</span><span class='p'>;</span>  <span class='k'>break</span><span class='p'>;</span>
+      <span class='k'>case</span> <span class='sc'>&#39;\r&#39;</span><span class='o'>:</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\\&#39;</span><span class='p'>;</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;r&#39;</span><span class='p'>;</span>  <span class='k'>break</span><span class='p'>;</span>
+      <span class='k'>case</span> <span class='sc'>&#39;\t&#39;</span><span class='o'>:</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\\&#39;</span><span class='p'>;</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;t&#39;</span><span class='p'>;</span>  <span class='k'>break</span><span class='p'>;</span>
+      <span class='k'>case</span> <span class='sc'>&#39;\&quot;&#39;</span><span class='o'>:</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\\&#39;</span><span class='p'>;</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\&quot;&#39;</span><span class='p'>;</span> <span class='k'>break</span><span class='p'>;</span>
+      <span class='k'>case</span> <span class='sc'>&#39;\&#39;&#39;</span><span class='o'>:</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\\&#39;</span><span class='p'>;</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\&#39;&#39;</span><span class='p'>;</span> <span class='k'>break</span><span class='p'>;</span>
+      <span class='k'>case</span> <span class='sc'>&#39;\\&#39;</span><span class='o'>:</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\\&#39;</span><span class='p'>;</span> <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\\&#39;</span><span class='p'>;</span> <span class='k'>break</span><span class='p'>;</span>
+      <span class='k'>default</span><span class='o'>:</span>
+        <span class='c1'>// Note that if we emit \xNN and the src character after that is a hex</span>
+        <span class='c1'>// digit then that digit must be escaped too to prevent it being</span>
+        <span class='c1'>// interpreted as part of the character code by C.</span>
+        <span class='k'>if</span> <span class='p'>((</span><span class='o'>!</span><span class='n'>utf8_safe</span> <span class='o'>||</span> <span class='k'>static_cast</span><span class='o'>&lt;</span><span class='n'>uint8</span><span class='o'>&gt;</span><span class='p'>(</span><span class='o'>*</span><span class='n'>src</span><span class='p'>)</span> <span class='o'>&lt;</span> <span class='mh'>0x80</span><span class='p'>)</span> <span class='o'>&amp;&amp;</span>
+            <span class='p'>(</span><span class='o'>!</span><span class='n'>isprint</span><span class='p'>(</span><span class='o'>*</span><span class='n'>src</span><span class='p'>)</span> <span class='o'>||</span>
+             <span class='p'>(</span><span class='n'>last_hex_escape</span> <span class='o'>&amp;&amp;</span> <span class='n'>isxdigit</span><span class='p'>(</span><span class='o'>*</span><span class='n'>src</span><span class='p'>))))</span> <span class='p'>{</span>
+          <span class='k'>if</span> <span class='p'>(</span><span class='n'>dest_len</span> <span class='o'>-</span> <span class='n'>used</span> <span class='o'>&lt;</span> <span class='mi'>4</span><span class='p'>)</span> <span class='c1'>// need space for 4 letter escape</span>
+            <span class='k'>return</span> <span class='o'>-</span><span class='mi'>1</span><span class='p'>;</span>
+          <span class='n'>sprintf</span><span class='p'>(</span><span class='n'>dest</span> <span class='o'>+</span> <span class='n'>used</span><span class='p'>,</span> <span class='p'>(</span><span class='n'>use_hex</span> <span class='o'>?</span> <span class='s'>&quot;</span><span class='se'>\\</span><span class='s'>x%02x&quot;</span> <span class='o'>:</span> <span class='s'>&quot;</span><span class='se'>\\</span><span class='s'>%03o&quot;</span><span class='p'>),</span>
+                  <span class='k'>static_cast</span><span class='o'>&lt;</span><span class='n'>uint8</span><span class='o'>&gt;</span><span class='p'>(</span><span class='o'>*</span><span class='n'>src</span><span class='p'>));</span>
+          <span class='n'>is_hex_escape</span> <span class='o'>=</span> <span class='n'>use_hex</span><span class='p'>;</span>
+          <span class='n'>used</span> <span class='o'>+=</span> <span class='mi'>4</span><span class='p'>;</span>
+        <span class='p'>}</span> <span class='k'>else</span> <span class='p'>{</span>
+          <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='o'>++</span><span class='p'>]</span> <span class='o'>=</span> <span class='o'>*</span><span class='n'>src</span><span class='p'>;</span> <span class='k'>break</span><span class='p'>;</span>
+        <span class='p'>}</span>
+    <span class='p'>}</span>
+    <span class='n'>last_hex_escape</span> <span class='o'>=</span> <span class='n'>is_hex_escape</span><span class='p'>;</span>
+  <span class='p'>}</span>
+
+  <span class='k'>if</span> <span class='p'>(</span><span class='n'>dest_len</span> <span class='o'>-</span> <span class='n'>used</span> <span class='o'>&lt;</span> <span class='mi'>1</span><span class='p'>)</span>   <span class='c1'>// make sure that there is room for \0</span>
+    <span class='k'>return</span> <span class='o'>-</span><span class='mi'>1</span><span class='p'>;</span>
+
+  <span class='n'>dest</span><span class='p'>[</span><span class='n'>used</span><span class='p'>]</span> <span class='o'>=</span> <span class='sc'>&#39;\0&#39;</span><span class='p'>;</span>   <span class='c1'>// doesn&#39;t count towards return value though</span>
+  <span class='k'>return</span> <span class='n'>used</span><span class='p'>;</span>
+<span class='p'>}</span>
+
+<span class='kt'>int</span> <span class='n'>CEscapeString</span><span class='p'>(</span><span class='k'>const</span> <span class='kt'>char</span><span class='o'>*</span> <span class='n'>src</span><span class='p'>,</span> <span class='kt'>int</span> <span class='n'>src_len</span><span class='p'>,</span> <span class='kt'>char</span><span class='o'>*</span> <span class='n'>dest</span><span class='p'>,</span> <span class='kt'>int</span> <span class='n'>dest_len</span><span class='p'>)</span> <span class='p'>{</span>
+  <span class='k'>return</span> <span class='n'>CEscapeInternal</span><span class='p'>(</span><span class='n'>src</span><span class='p'>,</span> <span class='n'>src_len</span><span class='p'>,</span> <span class='n'>dest</span><span class='p'>,</span> <span class='n'>dest_len</span><span class='p'>,</span> <span class='kc'>false</span><span class='p'>,</span> <span class='kc'>false</span><span class='p'>);</span>
+<span class='p'>}</span>
+</code></pre>
+</div>
+<p>这段代码是从protobuf目录中的src/google/protobuf/stubs/strutil.cc中抠取出来的。strutil.cc中还包含很多字符串相关操作，而且都有非常优秀的实现。可将其抽取出来丰富你的CPP公共库</p>]]></content:encoded>
+    </item>
+    
+    <item>
+      <title>hello jekyll world</title>
+      <link href="/2012/08/hello-jekyll-world/"/>
+      <pubDate>2012-08-25T00:00:00+08:00</pubDate>
+      <author>李锂</author>
+      <guid>/2012/08/hello-jekyll-world</guid>
+      <content:encoded><![CDATA[<p>关注了一周的使用jekyll + github搭建个人博客系统，这个周末开始实施，自己动手搭建了一个</p>
+
+<p>这的确是个好东西，尤其是对考虑写技术博客的屌丝码农来讲</p>
+
+<p>其一，博文的撰写是纯文本的，很适合码农，码农不喜欢Word，WPS或是富文本编辑框之类的工具，码农喜欢Vim，TextMate，Notepad++或是Sublime Text等。借助各种插件，你可以获得像写C++或是HTML一样五彩的世界，书写文字，编写代码片段，一切都非常流畅。</p>
+
+<p>其二，码农不擅长排版，不擅长使用鼠标；擅长高效的使用键盘而不打断思维，基于<a href='http://markdown.tw/'>Markdown</a>的纯文本可以让你专注写作，不再忧虑排版。</p>
+
+<p>其三，jekyll可以部署在<a href='http://pages.github.com'>Github Pages</a>上，并使用它提供的免费服务，文章的发布也是git commit操作。使用git进行版本管理，使用git进行多人协同，一切对于码农来说都非常完美</p>
+
+<p>其四，博客的UI设计完全可以DIY，你只需要懂一点点Liquid模板语言</p>
+<hr />
+<p>试想一下，安静的环境，有微风，偶尔听的见风声。在暖色调的灯光下，全屏暗色的写作状态，只有你和敲击键盘的声音</p>
+
+<p>按惯例来一个python版本的hello world</p>
+<div class='highlight'><pre><code class='python'><span class='k'>print</span> <span class='s'>&quot;hello jekyll world&quot;</span>
+</code></pre>
+</div>]]></content:encoded>
+    </item>
+    
+  </channel>
+</rss>
