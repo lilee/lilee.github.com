@@ -121,9 +121,9 @@ func main() {
 
    部署集群也非常简单，不需要针对不同节点进行额外配置，直接使用以下的方式启动：
 
-        ./test_groupcache 8081
-        ./test_groupcache 8082
-        ./test_groupcache 8083
+       ./test_groupcache 8081
+       ./test_groupcache 8082
+       ./test_groupcache 8083
    
 2. 创建cache
 
