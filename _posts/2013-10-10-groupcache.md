@@ -135,3 +135,5 @@ func main() {
 
 3. 使用Get方法获取数据
 
+想要了解groupcache较为复杂一点的例子看一参考[Playing With Groupcache](http://www.capotej.com/blog/2013/07/28/playing-with-groupcache/)
+
