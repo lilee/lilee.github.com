@@ -115,17 +115,17 @@ func main() {
 
 使用方法很简单，大体都是以下三个步骤：
 
-1. 配置集群
+### 1. 配置集群
    
-   集群的配置非常简单，只需要设置自己的地址，和集群内各peer（包括自己）的地址即可，groupcache使用http协议
+集群的配置非常简单，只需要设置自己的地址，和集群内各peer（包括自己）的地址即可，groupcache使用http协议
 
-   部署集群也非常简单，不需要针对不同节点进行额外配置
+部署集群也非常简单，不需要针对不同节点进行额外配置
        
-       ./test_groupcache 8081
-       ./test_groupcache 8082
-       ./test_groupcache 8083
+    ./test_groupcache 8081
+    ./test_groupcache 8082
+    ./test_groupcache 8083
 
-2. 创建cache
+### 2. 创建cache
 
    使用NewGroup创建，创建时必须指定三个参数：
 
@@ -133,7 +133,7 @@ func main() {
    2. cache大小
    3. 获取key对应本地数据的对调
 
-3. 使用Get方法获取数据
+### 3. 使用Get方法获取数据
 
 想要了解groupcache较为复杂一点的例子看一参考[Playing With Groupcache](http://www.capotej.com/blog/2013/07/28/playing-with-groupcache/)
 
