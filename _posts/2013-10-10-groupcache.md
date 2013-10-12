@@ -120,6 +120,10 @@ func main() {
    集群的配置非常简单，只需要设置自己的地址，和集群内各peer（包括自己）的地址即可，groupcache使用http协议
 
    部署集群也非常简单，不需要针对不同节点进行额外配置
+       
+       ./test_groupcache 8081
+       ./test_groupcache 8082
+       ./test_groupcache 8083
 
 2. 创建cache
 
