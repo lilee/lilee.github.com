@@ -7,7 +7,7 @@ tags: ["分布式", "缓存"]
 ---
 
 在上一篇文章[groupcache简介](2013-10-10-groupcache)中介绍了groupcache的基本概念，和memcached的对比，以及如何使用groupcache。
-这篇文章将对groupcache的设计和实现进行较为深入的分析。将从以下几个方面介绍
+这篇文章将对groupcache的设计和实现进行较为深入的分析。将从以下几个方面介绍:
 
 1. 基本设计思想
 2. 运作机制
