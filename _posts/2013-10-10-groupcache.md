@@ -135,5 +135,7 @@ func main() {
 
 ### 3. 使用Get方法获取数据
 
-想要了解groupcache较为复杂一点的例子看一参考[Playing With Groupcache](http://www.capotej.com/blog/2013/07/28/playing-with-groupcache/)
+通过浏览器访问http://localhost:{port}/s/{key}可以进行测试，并观察打印出的统计信息。
+
+想要了解groupcache较为复杂一点的例子可以参考[Playing With Groupcache](http://www.capotej.com/blog/2013/07/28/playing-with-groupcache/)
 
